@@ -4,6 +4,17 @@ Planilha financeira completa, moderna e interativa, com visual profissional em *
 
 📥 **Arquivo pronto para uso:** [`Planilha_Financeira_Pessoal.xlsx`](Planilha_Financeira_Pessoal.xlsx)
 
+## 🌐 Versão site (novo!)
+
+O mesmo controle financeiro em formato de **site interativo**: [`index.html`](index.html) — basta abrir o arquivo em qualquer navegador (funciona offline, sem instalar nada).
+
+- Todos os módulos da planilha: dashboard, receitas, despesas, contas, cartões, metas, planejamento, relatórios e alertas.
+- Gráficos animados (rosca, barras e linha) com tooltips.
+- Lançamento de compras parceladas automático (divide em N meses).
+- Filtros por mês, ano, categoria, conta, cartão e status.
+- Dados salvos no navegador (localStorage) + exportação/importação de backup JSON e CSV.
+- Para publicar na internet: ative o **GitHub Pages** nas configurações do repositório (Settings ▸ Pages ▸ Deploy from branch).
+
 ## 🗂️ Abas
 
 | Aba | O que faz |
