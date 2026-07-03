@@ -244,8 +244,8 @@ const soma=(arr,f)=>arr.reduce((a,x)=>a+(f?f(x):x),0);
 /* ============================== dados ============================== */
 function emptyDB(){
   const listas={
-    catRec:['Salário','Freelance','Investimentos','Vendas','Aluguel','Reembolso','Outros'],
-    catDes:['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Vestuário','Assinaturas','Contas Fixas','Investimentos','Outros'],
+    catRec:['Receita fixa','Salário','Freelance','Investimentos','Vendas','Aluguel','Reembolso','Outros'],
+    catDes:['Despesa fixa','Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Vestuário','Assinaturas','Contas Fixas','Investimentos','Outros'],
     formas:['Dinheiro','Pix','Débito','Crédito','Boleto','Transferência']
   };
   return {receitas:[],despesas:[],contas:[],transfers:[],cartoes:[],metas:[],
@@ -338,7 +338,17 @@ function load(){
   }catch(e){return null}
 }
 function save(){try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}}
-let db=load()||emptyDB(); save();
+const CAT_FIXA_REC='Receita fixa', CAT_FIXA_DES='Despesa fixa';
+function normalize(d){
+  d.fixasExcluidas=d.fixasExcluidas||[];
+  d.listas=d.listas||emptyDB().listas;
+  if(!d.listas.catRec.includes(CAT_FIXA_REC))d.listas.catRec.unshift(CAT_FIXA_REC);
+  if(!d.listas.catDes.includes(CAT_FIXA_DES))d.listas.catDes.unshift(CAT_FIXA_DES);
+  d.orcamentos=d.orcamentos||{};
+  if(d.orcamentos[CAT_FIXA_DES]==null)d.orcamentos[CAT_FIXA_DES]=0;
+  return d;
+}
+let db=normalize(load()||emptyDB()); save();
 try{
   const t=localStorage.getItem(THEME_KEY)||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
   document.documentElement.dataset.theme=t;
@@ -542,7 +552,7 @@ function vReceitas(){
   </div>
   <div class="tablewrap"><table>
     <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="num">Valor</th><th>Forma</th><th>Conta</th><th>Status</th><th></th></tr></thead>
-    <tbody>${rows.map(r=>`<tr><td class="money">${fdate(r.data)}</td><td>${esc(r.desc)}</td><td>${esc(r.cat)}</td>
+    <tbody>${rows.map(r=>`<tr><td class="money">${fdate(r.data)}</td><td>${esc(r.desc)}${r.cat===CAT_FIXA_REC?' <span title="Receita fixa — repete todo mês">🔁</span>':''}</td><td>${esc(r.cat)}</td>
       <td class="num pos">${fmt(r.valor)}</td><td>${esc(r.forma)}</td><td>${esc(r.conta)}</td><td>${pillStatus(r)}</td>${acts('rec',r.id)}</tr>`).join('')||'<tr><td colspan="8" class="empty">Nenhuma receita no período.</td></tr>'}</tbody>
   </table></div>`;
 }
@@ -566,11 +576,11 @@ function vDespesas(){
   </div>
   <div class="tablewrap"><table>
     <thead><tr><th title="Confirmar pagamento">✓</th><th>Data</th><th>Descrição</th><th>Categoria</th><th class="num">Valor</th><th>Forma</th><th>Cartão</th><th>Parc.</th><th>Vencimento</th><th>Pago</th><th></th></tr></thead>
-    <tbody>${rows.map(d=>`<tr class="${cls(d)}"><td><button class="paybtn ${d.pago?'on':''}" data-act="tog-pago" data-id="${d.id}" title="${d.pago?'Pago — clique para reabrir':'Confirmar que foi pago'}" aria-label="Confirmar pagamento">✓</button></td><td class="money">${fdate(d.data)}</td><td>${esc(d.desc)}</td><td>${esc(d.cat)}</td>
+    <tbody>${rows.map(d=>`<tr class="${cls(d)}"><td><button class="paybtn ${d.pago?'on':''}" data-act="tog-pago" data-id="${d.id}" title="${d.pago?'Pago — clique para reabrir':'Confirmar que foi pago'}" aria-label="Confirmar pagamento">✓</button></td><td class="money">${fdate(d.data)}</td><td>${esc(d.desc)}${d.cat===CAT_FIXA_DES?' <span title="Despesa fixa — repete todo mês">🔁</span>':''}</td><td>${esc(d.cat)}</td>
       <td class="num">${fmt(d.valor)}</td><td>${esc(d.forma)}</td><td>${esc(d.cartao||'—')}</td><td>${esc(d.parcelas||'—')}</td>
       <td class="money">${fdate(d.venc)}</td><td>${pillPago(d)}</td>${acts('des',d.id)}</tr>`).join('')||'<tr><td colspan="11" class="empty">Nenhuma despesa no período.</td></tr>'}</tbody>
   </table></div>
-  <p style="color:var(--faint);font-size:12px;margin-top:9px">Linhas com barra vermelha estão vencidas; amarela, vencem em até 7 dias. Compras parceladas são lançadas automaticamente mês a mês.</p>`;
+  <p style="color:var(--faint);font-size:12px;margin-top:9px">Linhas com barra vermelha estão vencidas; amarela, vencem em até 7 dias. Compras parceladas são lançadas automaticamente mês a mês. Itens na categoria “Despesa fixa” 🔁 se repetem sozinhos nos próximos meses.</p>`;
 }
 
 function vContas(){
@@ -769,7 +779,7 @@ function formReceita(r){
     {k:'forma',lb:'Forma de recebimento',type:'select',opts:db.listas.formas},
     {k:'conta',lb:'Conta',type:'select',opts:contasOpts()},
     {k:'status',lb:'Status',type:'select',opts:['Recebido','Pendente']}
-  ],r,o=>{if(r)Object.assign(r,o);else db.receitas.push({id:uid(),...o});save();render();toast(r?'Receita atualizada':'Receita adicionada')});
+  ],r,o=>{if(r)Object.assign(r,o);else db.receitas.push({id:uid(),...o});save();render();toast(r?'Receita atualizada':(o.cat===CAT_FIXA_REC?'🔁 Receita fixa — repetirá todo mês':'Receita adicionada'))});
 }
 function formDespesa(d){
   const fields=[
@@ -803,7 +813,7 @@ function formDespesa(d){
         }
         db.despesas.push({id:uid(),data:o.data,desc:o.desc,cat:o.cat,valor:o.valor,forma:o.forma,cartao:o.cartao,parcelas:'',venc:o.venc,pago,conta:o.conta});
       }
-      save();render();toast(d?'Despesa atualizada':'Despesa adicionada');});
+      save();render();toast(d?'Despesa atualizada':(o.cat===CAT_FIXA_DES?'🔁 Despesa fixa — repetirá todo mês':'Despesa adicionada'));});
 }
 const formConta=c=>openForm(c?'Editar conta':'Nova conta',[
   {k:'nome',lb:'Nome do banco / conta'},{k:'saldoInicial',lb:'Saldo inicial (R$)',type:'number'}],c,
@@ -838,6 +848,31 @@ function expCSV(){
 }
 
 /* ============================== render / eventos ============================== */
+const ymNum=t=>{const[a,b]=t.split('-').map(Number);return a*12+b-1};
+function ensureFixas(){
+  let criou=false;
+  const alvo=sel.y*12+sel.m-1;
+  const gen=(arr,cat,make)=>{
+    arr.filter(x=>x.cat===cat&&!x.fixaDe&&x.data).forEach(o=>{
+      for(let t=ymNum(o.data)+1;t<=alvo;t++){
+        const y=Math.floor(t/12), m=t%12+1;
+        if(db.fixasExcluidas.includes(o.id+'|'+y+'-'+pad(m)))continue;
+        if(arr.some(x=>x.fixaDe===o.id&&inMonth(x.data,y,m)))continue;
+        arr.push(make(o,y,m));criou=true;
+      }
+    });
+  };
+  gen(db.receitas,CAT_FIXA_REC,(o,y,m)=>({id:uid(),fixaDe:o.id,data:clampDay(y,m,+o.data.slice(8)),
+    desc:o.desc,cat:o.cat,valor:o.valor,forma:o.forma,conta:o.conta,status:'Pendente'}));
+  gen(db.despesas,CAT_FIXA_DES,(o,y,m)=>{
+    let venc='';
+    if(o.venc){const off=ymNum(o.venc)-ymNum(o.data),t2=y*12+m-1+off;
+      venc=clampDay(Math.floor(t2/12),t2%12+1,+o.venc.slice(8));}
+    return {id:uid(),fixaDe:o.id,data:clampDay(y,m,+o.data.slice(8)),desc:o.desc,cat:o.cat,
+      valor:o.valor,forma:o.forma,cartao:o.cartao,parcelas:o.parcelas,venc,pago:false,conta:o.conta};
+  });
+  if(criou)save();
+}
 function renderNav(){
   const n=alertas().total;
   $('#sidenav').innerHTML=`<div class="logo"><span class="dot">R$</span><div><b>Finanças</b><small>painel pessoal</small></div></div>`+
@@ -848,6 +883,7 @@ function renderNav(){
     `<div class="side-foot">Dados salvos neste navegador.<br>Faça backup em Ajustes.</div>`;
 }
 function render(){
+  ensureFixas();
   renderNav();
   const [t,sub]=TITLES[view];
   $('#pg-title').textContent=t; $('#pg-sub').textContent=sub;
@@ -869,17 +905,26 @@ document.addEventListener('click',e=>{
   const act=b.dataset.act, id=b.dataset.id;
   const find=(arr)=>arr.find(x=>x.id===id);
   const del=(arr,msg)=>{const i=arr.findIndex(x=>x.id===id);if(i>=0&&confirm('Excluir este item?')){arr.splice(i,1);save();render();toast(msg)}};
+  const delFixavel=(arr,msg)=>{
+    const i=arr.findIndex(x=>x.id===id);if(i<0)return;
+    const it=arr[i];
+    const serie=(it.cat===CAT_FIXA_REC||it.cat===CAT_FIXA_DES)&&!it.fixaDe&&arr.some(x=>x.fixaDe===it.id);
+    if(!confirm(serie?'Este é um lançamento FIXO: excluir também todas as repetições já geradas?':'Excluir este item?'))return;
+    if(it.fixaDe)db.fixasExcluidas.push(it.fixaDe+'|'+it.data.slice(0,7));
+    if(serie)for(let j=arr.length-1;j>=0;j--)if(arr[j].fixaDe===it.id)arr.splice(j,1);
+    arr.splice(arr.findIndex(x=>x.id===id),1);save();render();toast(msg);
+  };
   switch(act){
     case 'mes-prev':{const t=addMonths(sel.y,sel.m,-1);sel={y:t.y,m:t.m};render();break}
     case 'mes-next':{const t=addMonths(sel.y,sel.m,1);sel={y:t.y,m:t.m};render();break}
     case 'modal-close':closeModal();break;
     case 'rec-new':formReceita();break;
     case 'rec-edit':formReceita(find(db.receitas));break;
-    case 'rec-del':del(db.receitas,'Receita excluída');break;
+    case 'rec-del':delFixavel(db.receitas,'Receita excluída');break;
     case 'tog-rec':{const r=find(db.receitas);r.status=r.status==='Recebido'?'Pendente':'Recebido';save();render();break}
     case 'des-new':formDespesa();break;
     case 'des-edit':formDespesa(find(db.despesas));break;
-    case 'des-del':del(db.despesas,'Despesa excluída');break;
+    case 'des-del':delFixavel(db.despesas,'Despesa excluída');break;
     case 'tog-pago':{const d=find(db.despesas);d.pago=!d.pago;save();render();toast(d.pago?'Marcada como paga':'Marcada como em aberto');break}
     case 'con-new':formConta();break;
     case 'con-edit':formConta(find(db.contas));break;
@@ -920,7 +965,7 @@ document.addEventListener('change',e=>{
     document.querySelector(`[data-orc="${CSS.escape(foco)}"]`)?.focus();return}
   if(e.target.id==='file-imp'){const f=e.target.files[0];if(!f)return;
     const rd=new FileReader();rd.onload=()=>{try{const nu=JSON.parse(rd.result);
-      if(!nu.receitas||!nu.despesas)throw 0;db=nu;save();render();toast('Backup importado')}catch(_){toast('Arquivo inválido')}};
+      if(!nu.receitas||!nu.despesas)throw 0;db=normalize(nu);save();render();toast('Backup importado')}catch(_){toast('Arquivo inválido')}};
     rd.readAsText(f);e.target.value='';}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
