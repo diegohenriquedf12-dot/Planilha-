@@ -15,6 +15,18 @@ O mesmo controle financeiro em formato de **site interativo**: [`index.html`](in
 - Dados salvos no navegador (localStorage) + exportação/importação de backup JSON e CSV.
 - Para publicar na internet: ative o **GitHub Pages** nas configurações do repositório (Settings ▸ Pages ▸ Deploy from branch).
 
+### ☁️ Sincronização entre dispositivos (Supabase)
+
+O site pode sincronizar seus dados entre celular, computador etc. usando um projeto **gratuito** do [Supabase](https://supabase.com) — os dados ficam na sua própria conta:
+
+1. Crie um projeto em supabase.com.
+2. No **SQL Editor** do projeto, execute o conteúdo de [`supabase.sql`](supabase.sql).
+3. Em **Authentication ▸ Sign In / Up ▸ Email**, desative "Confirm email" (opcional, facilita).
+4. No site, abra **Ajustes ▸ ☁️ Sincronizar entre dispositivos**, cole a **Project URL** e a chave **anon public** (Settings ▸ API) e crie sua conta.
+5. Nos outros aparelhos, repita o passo 4 e **entre com o mesmo e-mail/senha**.
+
+As alterações são enviadas automaticamente ao editar e buscadas ao abrir o app; em conflito, vale a versão mais recente. A tabela usa RLS — cada usuário só acessa os próprios dados.
+
 ## 🗂️ Abas
 
 | Aba | O que faz |
