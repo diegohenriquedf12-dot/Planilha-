@@ -863,7 +863,9 @@ const SYNC_SQL=['create table if not exists public.financas (',
 'create policy "sel_own" on public.financas for select using (auth.uid() = user_id);',
 'create policy "ins_own" on public.financas for insert with check (auth.uid() = user_id);',
 'create policy "upd_own" on public.financas for update using (auth.uid() = user_id);'].join('\n');
+const SYNC_DEFAULT={url:'https://pnnaqflsusnvltxfifpf.supabase.co',key:'sb_publishable_DJmczoMwvaBj6bHXzPWt5Q_jlOi0Knz'};
 let sync=(()=>{try{return JSON.parse(localStorage.getItem(SYNC_KEY))||{}}catch(_){return{}}})();
+if(!sync.url&&!sync.custom){sync.url=SYNC_DEFAULT.url;sync.key=SYNC_DEFAULT.key;}
 function saveSync(){try{localStorage.setItem(SYNC_KEY,JSON.stringify(sync))}catch(_){}}
 const syncReady=()=>!!(sync.url&&sync.key);
 const logged=()=>syncReady()&&sync.session&&sync.session.refresh_token;
@@ -883,7 +885,12 @@ async function sbRest(method,qs,body,prefer){
   const h={apikey:sync.key,Authorization:'Bearer '+t,'Content-Type':'application/json'};
   if(prefer)h.Prefer=prefer;
   const r=await fetch(sync.url+'/rest/v1/financas'+qs,{method,headers:h,body:body?JSON.stringify(body):undefined});
-  if(!r.ok)throw new Error('Supabase '+r.status+': '+(await r.text()).slice(0,140));
+  if(!r.ok){
+    const tx=await r.text();
+    if(tx.includes('does not exist')||tx.includes('42P01'))
+      throw new Error('a tabela ainda não foi criada — execute o SQL (Ajustes ▸ copiar SQL) no SQL Editor do Supabase');
+    throw new Error('Supabase '+r.status+': '+tx.slice(0,140));
+  }
   return r.status===204?null:r.json();
 }
 async function pushNow(){
@@ -929,7 +936,12 @@ async function authAction(kind){
     const r=await fetch(sync.url+'/auth/v1/'+path,{method:'POST',
       headers:{apikey:sync.key,'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
     const j=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'falha na autenticação');
+    if(!r.ok){
+      let m=j.error_description||j.msg||j.message||j.error_code||'falha na autenticação';
+      if(/email_not_confirmed|Email not confirmed/i.test(JSON.stringify(j)))m='confirme o e-mail enviado (ou desative "Confirm email" no Supabase) e tente de novo';
+      if(/invalid_credentials|Invalid login credentials/i.test(JSON.stringify(j)))m='e-mail ou senha incorretos — se ainda não tem conta, use "Criar conta"';
+      throw new Error(m);
+    }
     const sess=j.access_token?j:(j.session||null);
     if(!sess||!sess.access_token){toast('Conta criada! Confirme o e-mail enviado e depois clique em Entrar.');return}
     const u=sess.user||j.user||{};
@@ -952,7 +964,10 @@ function syncCard(){
       <div><div class="eyebrow" style="margin-bottom:4px">Project URL</div><input id="sb-url" placeholder="https://xxxx.supabase.co"></div>
       <div><div class="eyebrow" style="margin-bottom:4px">Chave anon public</div><input id="sb-key" placeholder="eyJhbGciOi..."></div>
     </div>
-    <button class="btn" data-act="sync-cfg-save">Salvar configuração</button>
+    <div class="toolbar" style="margin:0">
+      <button class="btn" data-act="sync-cfg-save">Salvar configuração</button>
+      <button class="btn-ghost" data-act="sync-default">Usar configuração padrão do site</button>
+    </div>
   </div>`;
   if(!logged())return `
   <div class="card" style="margin-top:12px"><h2>☁️ Sincronizar entre dispositivos</h2>
@@ -1081,12 +1096,13 @@ document.addEventListener('click',e=>{
       const u=((document.getElementById('sb-url')||{value:''}).value||'').trim().replace(/\/+$/,'');
       const k=((document.getElementById('sb-key')||{value:''}).value||'').trim();
       if(!/^https:\/\/.+/.test(u)||k.length<20){toast('Confira a Project URL e a chave anon');break}
-      sync.url=u;sync.key=k;saveSync();render();toast('Configuração salva — agora entre ou crie sua conta');break}
+      sync.url=u;sync.key=k;sync.custom=true;saveSync();render();toast('Configuração salva — agora entre ou crie sua conta');break}
     case 'sync-login':authAction('login');break;
     case 'sync-signup':authAction('signup');break;
     case 'sync-now':syncNow(false);break;
     case 'sync-logout':sync.session=null;saveSync();render();toast('Desconectado');break;
-    case 'sync-clear':if(confirm('Remover a configuração do Supabase deste aparelho? (os dados locais continuam)')){sync={};saveSync();render()}break;
+    case 'sync-clear':if(confirm('Trocar a configuração do Supabase neste aparelho? (os dados locais continuam)')){sync={custom:true};saveSync();render()}break;
+    case 'sync-default':sync={url:SYNC_DEFAULT.url,key:SYNC_DEFAULT.key};saveSync();render();toast('Configuração padrão restaurada');break;
     case 'sync-sql-copy':{
       if(navigator.clipboard&&navigator.clipboard.writeText)
         navigator.clipboard.writeText(SYNC_SQL).then(()=>toast('SQL copiado!'),()=>prompt('Copie o SQL:',SYNC_SQL));
