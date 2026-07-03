@@ -2,7 +2,7 @@ name: Publicar site no GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [claude/personal-financial-spreadsheet-tqg7p5]
   workflow_dispatch:
 
 permissions:
