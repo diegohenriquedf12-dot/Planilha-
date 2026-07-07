@@ -232,10 +232,11 @@ tr.venc-warn td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .addrow{display:flex;gap:8px;max-width:340px}
 
 @media (max-width:900px){
-  .app{grid-template-columns:1fr}
-  aside{position:static;height:auto;flex-direction:row;overflow-x:auto;padding:10px;gap:2px;border-right:0;border-bottom:1px solid var(--border-soft)}
-  .logo{padding:0 10px 0 4px}.logo small{display:none}
-  .nav-btn{white-space:nowrap;padding:7px 10px}
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  aside{position:sticky;top:0;z-index:40;height:auto;align-self:start;flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;padding:8px 10px;gap:4px;border-right:0;border-bottom:1px solid var(--glass-brd)}
+  .logo{padding:0 12px 0 4px;flex-shrink:0}.logo small{display:none}.logo .dot{width:30px;height:30px}
+  .nav-btn{white-space:nowrap;padding:8px 12px;flex-shrink:0}
+  .nav-btn.on::before{display:none}
   .side-foot{display:none}
   main{padding:18px 14px 50px}
   .charts2{grid-template-columns:1fr}
