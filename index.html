@@ -928,28 +928,57 @@ function syncStatusText(){
   return (sync.lastMsg||'aguardando')+(t?' · '+t:'');
 }
 function paintSyncStatus(){const el=document.getElementById('sync-status');if(el)el.textContent=syncStatusText()}
+function syncMsg(txt,ok){const el=document.getElementById('sb-msg');if(!el)return;
+  el.textContent=txt||'';el.style.display=txt?'block':'none';el.style.color=ok?'var(--good)':'var(--crit)'}
+async function authReq(path,email,pass){
+  const r=await fetch(sync.url+'/auth/v1/'+path,{method:'POST',
+    headers:{apikey:sync.key,'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+  const j=await r.json().catch(()=>({}));
+  return {ok:r.ok,j,raw:JSON.stringify(j||{})};
+}
+function adoptSession(j){
+  const sess=j&&j.access_token?j:(j&&j.session||null);
+  if(!sess||!sess.access_token)return false;
+  const u=sess.user||j.user||{};
+  sync.session={access_token:sess.access_token,refresh_token:sess.refresh_token,
+    expires_at:Date.now()+(sess.expires_in||3600)*1000,user:{id:u.id,email:u.email}};
+  saveSync();return true;
+}
+function authErrMsg(r){
+  if(/email_not_confirmed|Email not confirmed/i.test(r.raw))return 'Confirme sua conta pelo link enviado ao seu e-mail e clique em Entrar de novo. (No Supabase, desative "Confirm email" para dispensar essa etapa.)';
+  if(/signup.*disabled|Signups not allowed/i.test(r.raw))return 'O cadastro está desativado no projeto Supabase — ative "Allow new users to sign up" em Authentication.';
+  if(/weak_password|Password should/i.test(r.raw))return 'Senha recusada pelo servidor — use uma senha mais forte (6+ caracteres).';
+  if(/rate limit|too many|over_email_send_rate/i.test(r.raw))return 'Muitas tentativas — aguarde alguns minutos e tente novamente.';
+  return r.j&&(r.j.error_description||r.j.msg||r.j.message||r.j.error_code)||'Falha na autenticação.';
+}
 async function authAction(kind){
   const email=(document.getElementById('sb-email')||{value:''}).value.trim();
   const pass=(document.getElementById('sb-pass')||{value:''}).value;
-  if(!email||!pass||pass.length<6){toast('Informe e-mail e senha (mínimo 6 caracteres)');return}
+  if(!email||!/.+@.+\..+/.test(email)){syncMsg('Informe um e-mail válido.');return}
+  if(!pass||pass.length<6){syncMsg('A senha precisa ter pelo menos 6 caracteres.');return}
+  const lock=v=>document.querySelectorAll('[data-act="sync-login"],[data-act="sync-signup"]').forEach(b=>b.disabled=v);
+  lock(true);syncMsg('Conectando…',true);
   try{
-    const path=kind==='signup'?'signup':'token?grant_type=password';
-    const r=await fetch(sync.url+'/auth/v1/'+path,{method:'POST',
-      headers:{apikey:sync.key,'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok){
-      let m=j.error_description||j.msg||j.message||j.error_code||'falha na autenticação';
-      if(/email_not_confirmed|Email not confirmed/i.test(JSON.stringify(j)))m='confirme o e-mail enviado (ou desative "Confirm email" no Supabase) e tente de novo';
-      if(/invalid_credentials|Invalid login credentials/i.test(JSON.stringify(j)))m='e-mail ou senha incorretos — se ainda não tem conta, use "Criar conta"';
-      throw new Error(m);
+    let r;
+    if(kind==='signup')r=await authReq('signup',email,pass);
+    else{
+      r=await authReq('token?grant_type=password',email,pass);
+      if(!r.ok&&/invalid_credentials|Invalid login credentials/i.test(r.raw)){
+        syncMsg('Conta não encontrada — criando sua conta…',true);
+        r=await authReq('signup',email,pass);
+        if(!r.ok&&/already registered|user_already_exists|email_exists/i.test(r.raw)){
+          syncMsg('Este e-mail já tem conta, mas a senha não confere. Verifique a senha.');return;
+        }
+      }
     }
-    const sess=j.access_token?j:(j.session||null);
-    if(!sess||!sess.access_token){toast('Conta criada! Confirme o e-mail enviado e depois clique em Entrar.');return}
-    const u=sess.user||j.user||{};
-    sync.session={access_token:sess.access_token,refresh_token:sess.refresh_token,
-      expires_at:Date.now()+(sess.expires_in||3600)*1000,user:{id:u.id,email:u.email}};
-    saveSync();toast('Conectado!');await syncNow(true);render();
-  }catch(e){toast('⚠️ '+e.message)}
+    if(!r.ok){syncMsg('⚠️ '+authErrMsg(r));return}
+    if(!adoptSession(r.j)){
+      syncMsg('Quase lá! Enviamos um link de confirmação para '+email+' — abra-o e depois clique em Entrar. (Se você já tinha conta, confira a senha. Para dispensar a confirmação, desative "Confirm email" no Supabase.)',true);
+      return;
+    }
+    toast('Conectado!');await syncNow(true);render();
+  }catch(e){syncMsg('⚠️ Não consegui falar com o servidor ('+e.message+'). Verifique sua conexão e tente de novo.')}
+  finally{lock(false)}
 }
 function syncCard(){
   if(!logged())return `
@@ -959,6 +988,7 @@ function syncCard(){
       <div><div class="eyebrow" style="margin-bottom:4px">E-mail</div><input id="sb-email" type="email" autocomplete="email"></div>
       <div><div class="eyebrow" style="margin-bottom:4px">Senha</div><input id="sb-pass" type="password" autocomplete="current-password"></div>
     </div>
+    <div id="sb-msg" style="display:none;font-size:12.5px;line-height:1.6;margin:0 0 10px;max-width:560px"></div>
     <div class="toolbar" style="margin:0">
       <button class="btn" data-act="sync-login">Entrar</button>
       <button class="btn-ghost" data-act="sync-signup">Criar conta</button>
@@ -1030,6 +1060,9 @@ function render(){
     el.querySelectorAll('.meter i').forEach(i=>{i.style.width=i.dataset.w});
   }));
 }
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&(e.target.id==='sb-pass'||e.target.id==='sb-email'))authAction('login');
+});
 document.addEventListener('click',e=>{
   const nb=e.target.closest('[data-view]'); if(nb){view=nb.dataset.view;render();window.scrollTo({top:0});return}
   const b=e.target.closest('[data-act]'); if(!b)return;
