@@ -1,16 +1,32 @@
--- Execute este código no SQL Editor do seu projeto Supabase.
--- Cria a tabela de sincronização do painel financeiro com RLS
--- (cada usuário só lê e grava a própria linha).
+-- Sincronização por senha administrativa (Planilha Financeira Pessoal)
+-- Rode UMA VEZ no SQL Editor do seu projeto Supabase.
+-- Os dados ficam sob um identificador derivado da senha (SHA-256); a tabela
+-- não é exposta pela API — só as duas funções abaixo (security definer) a acessam.
 
-create table if not exists public.financas (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+create table if not exists public.financas_sync (
+  space text primary key,
   doc jsonb not null,
   updated_ms bigint not null default 0,
   updated_at timestamptz not null default now()
 );
+alter table public.financas_sync enable row level security;
+-- sem policies: a tabela só é acessada pelas funções abaixo
 
-alter table public.financas enable row level security;
+create or replace function public.sync_pull(p_space text)
+returns table(doc jsonb, updated_ms bigint)
+language sql security definer set search_path = public as $$
+  select doc, updated_ms from public.financas_sync where space = p_space;
+$$;
 
-create policy "sel_own" on public.financas for select using (auth.uid() = user_id);
-create policy "ins_own" on public.financas for insert with check (auth.uid() = user_id);
-create policy "upd_own" on public.financas for update using (auth.uid() = user_id);
+create or replace function public.sync_push(p_space text, p_doc jsonb, p_ms bigint)
+returns void
+language sql security definer set search_path = public as $$
+  insert into public.financas_sync(space, doc, updated_ms, updated_at)
+  values (p_space, p_doc, p_ms, now())
+  on conflict (space) do update
+    set doc = excluded.doc, updated_ms = excluded.updated_ms, updated_at = now()
+    where public.financas_sync.updated_ms <= excluded.updated_ms;
+$$;
+
+grant execute on function public.sync_pull(text) to anon, authenticated;
+grant execute on function public.sync_push(text, jsonb, bigint) to anon, authenticated;

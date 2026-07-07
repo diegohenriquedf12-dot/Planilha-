@@ -853,57 +853,71 @@ function expCSV(){
 
 /* ============================== sincronização (Supabase) ============================== */
 const SYNC_KEY='financas_sync_v1';
-const SYNC_SQL=['create table if not exists public.financas (',
-'  user_id uuid primary key references auth.users(id) on delete cascade,',
+const SYNC_SQL=['-- Sincronização por senha — rode UMA VEZ no SQL Editor do Supabase',
+'create table if not exists public.financas_sync (',
+'  space text primary key,',
 '  doc jsonb not null,',
 '  updated_ms bigint not null default 0,',
 '  updated_at timestamptz not null default now()',
 ');',
-'alter table public.financas enable row level security;',
-'create policy "sel_own" on public.financas for select using (auth.uid() = user_id);',
-'create policy "ins_own" on public.financas for insert with check (auth.uid() = user_id);',
-'create policy "upd_own" on public.financas for update using (auth.uid() = user_id);'].join('\n');
+'alter table public.financas_sync enable row level security;',
+'-- sem policies: a tabela só é acessada pelas funções abaixo',
+'',
+'create or replace function public.sync_pull(p_space text)',
+'returns table(doc jsonb, updated_ms bigint)',
+'language sql security definer set search_path = public as $$',
+'  select doc, updated_ms from public.financas_sync where space = p_space;',
+'$$;',
+'',
+'create or replace function public.sync_push(p_space text, p_doc jsonb, p_ms bigint)',
+'returns void',
+'language sql security definer set search_path = public as $$',
+'  insert into public.financas_sync(space, doc, updated_ms, updated_at)',
+'  values (p_space, p_doc, p_ms, now())',
+'  on conflict (space) do update',
+'    set doc = excluded.doc, updated_ms = excluded.updated_ms, updated_at = now()',
+'    where public.financas_sync.updated_ms <= excluded.updated_ms;',
+'$$;',
+'',
+'grant execute on function public.sync_pull(text) to anon, authenticated;',
+'grant execute on function public.sync_push(text, jsonb, bigint) to anon, authenticated;'].join('\n');
 const SYNC_DEFAULT={url:'https://pnnaqflsusnvltxfifpf.supabase.co',key:'sb_publishable_DJmczoMwvaBj6bHXzPWt5Q_jlOi0Knz'};
 let sync=(()=>{try{return JSON.parse(localStorage.getItem(SYNC_KEY))||{}}catch(_){return{}}})();
-if(sync.url&&sync.url!==SYNC_DEFAULT.url)sync.session=null;
+if(sync.session)delete sync.session; // formato antigo (login por e-mail) — descartado
 sync.url=SYNC_DEFAULT.url;sync.key=SYNC_DEFAULT.key;delete sync.custom;
 function saveSync(){try{localStorage.setItem(SYNC_KEY,JSON.stringify(sync))}catch(_){}}
 const syncReady=()=>!!(sync.url&&sync.key);
-const logged=()=>syncReady()&&sync.session&&sync.session.refresh_token;
-async function accessToken(){
-  const ss=sync.session; if(!ss)throw new Error('não conectado');
-  if(Date.now()<(ss.expires_at||0)-60000)return ss.access_token;
-  const r=await fetch(sync.url+'/auth/v1/token?grant_type=refresh_token',{method:'POST',
-    headers:{apikey:sync.key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:ss.refresh_token})});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok){sync.session=null;saveSync();throw new Error('sessão expirou — entre novamente')}
-  Object.assign(ss,{access_token:j.access_token,refresh_token:j.refresh_token||ss.refresh_token,
-    expires_at:Date.now()+(j.expires_in||3600)*1000});
-  saveSync();return ss.access_token;
+const logged=()=>syncReady()&&!!sync.space;
+async function spaceId(pass){
+  const s='financas-sync-v1:'+pass;
+  try{
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(_){ // contexto não seguro (ex.: abrir via file://) — hash de reserva
+    let h=0x811c9dc5>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}
+    return 'fnv'+h.toString(16).padStart(8,'0');
+  }
 }
-async function sbRest(method,qs,body,prefer){
-  const t=await accessToken();
-  const h={apikey:sync.key,Authorization:'Bearer '+t,'Content-Type':'application/json'};
-  if(prefer)h.Prefer=prefer;
-  const r=await fetch(sync.url+'/rest/v1/financas'+qs,{method,headers:h,body:body?JSON.stringify(body):undefined});
+async function sbRpc(fn,body){
+  const h={apikey:sync.key,Authorization:'Bearer '+sync.key,'Content-Type':'application/json'};
+  const r=await fetch(sync.url+'/rest/v1/rpc/'+fn,{method:'POST',headers:h,body:JSON.stringify(body)});
+  const tx=await r.text();
   if(!r.ok){
-    const tx=await r.text();
-    if(tx.includes('does not exist')||tx.includes('42P01'))
-      throw new Error('a tabela ainda não foi criada — execute o SQL (Ajustes ▸ copiar SQL) no SQL Editor do Supabase');
+    if(/PGRST202|find the function|does not exist|schema cache|sync_pull|sync_push/i.test(tx))
+      throw new Error('as funções de sincronização ainda não existem — abra o SQL Editor do Supabase e execute o SQL (botão “copiar SQL”)');
     throw new Error('Supabase '+r.status+': '+tx.slice(0,140));
   }
-  return r.status===204?null:r.json();
+  return tx?JSON.parse(tx):null;
 }
 async function pushNow(){
   if(!logged())return;
   try{
-    await sbRest('POST','',[{user_id:sync.session.user.id,doc:db,updated_ms:db._rev||0}],
-      'resolution=merge-duplicates,return=minimal');
+    await sbRpc('sync_push',{p_space:sync.space,p_doc:db,p_ms:db._rev||0});
     sync.lastAt=Date.now();sync.lastMsg='☁️ enviado';saveSync();paintSyncStatus();
   }catch(e){sync.lastMsg='⚠️ '+e.message;saveSync();paintSyncStatus()}
 }
 async function pullNow(){
-  const rows=await sbRest('GET','?select=doc,updated_ms');
+  const rows=await sbRpc('sync_pull',{p_space:sync.space});
   const rem=rows&&rows[0];
   if(!rem)return false;
   if((rem.updated_ms||0)>(db._rev||0)){
@@ -912,7 +926,7 @@ async function pullNow(){
   return false;
 }
 async function syncNow(silent){
-  if(!logged()){if(!silent)toast('Entre com e-mail e senha em Ajustes ▸ Sincronizar');return}
+  if(!logged()){if(!silent)toast('Digite sua senha em Ajustes ▸ Sincronizar');return}
   try{
     const adotou=await pullNow();
     if(adotou){sync.lastAt=Date.now();sync.lastMsg='☁️ recebido';saveSync();render();}
@@ -930,81 +944,52 @@ function syncStatusText(){
 function paintSyncStatus(){const el=document.getElementById('sync-status');if(el)el.textContent=syncStatusText()}
 function syncMsg(txt,ok){const el=document.getElementById('sb-msg');if(!el)return;
   el.textContent=txt||'';el.style.display=txt?'block':'none';el.style.color=ok?'var(--good)':'var(--crit)'}
-async function authReq(path,email,pass){
-  const r=await fetch(sync.url+'/auth/v1/'+path,{method:'POST',
-    headers:{apikey:sync.key,'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
-  const j=await r.json().catch(()=>({}));
-  return {ok:r.ok,j,raw:JSON.stringify(j||{})};
-}
-function adoptSession(j){
-  const sess=j&&j.access_token?j:(j&&j.session||null);
-  if(!sess||!sess.access_token)return false;
-  const u=sess.user||j.user||{};
-  sync.session={access_token:sess.access_token,refresh_token:sess.refresh_token,
-    expires_at:Date.now()+(sess.expires_in||3600)*1000,user:{id:u.id,email:u.email}};
-  saveSync();return true;
-}
-function authErrMsg(r){
-  if(/email_not_confirmed|Email not confirmed/i.test(r.raw))return 'Confirme sua conta pelo link enviado ao seu e-mail e clique em Entrar de novo. (No Supabase, desative "Confirm email" para dispensar essa etapa.)';
-  if(/signup.*disabled|Signups not allowed/i.test(r.raw))return 'O cadastro está desativado no projeto Supabase — ative "Allow new users to sign up" em Authentication.';
-  if(/weak_password|Password should/i.test(r.raw))return 'Senha recusada pelo servidor — use uma senha mais forte (6+ caracteres).';
-  if(/rate limit|too many|over_email_send_rate/i.test(r.raw))return 'Muitas tentativas — aguarde alguns minutos e tente novamente.';
-  return r.j&&(r.j.error_description||r.j.msg||r.j.message||r.j.error_code)||'Falha na autenticação.';
-}
-async function authAction(kind){
-  const email=(document.getElementById('sb-email')||{value:''}).value.trim();
+async function adminLogin(){
   const pass=(document.getElementById('sb-pass')||{value:''}).value;
-  if(!email||!/.+@.+\..+/.test(email)){syncMsg('Informe um e-mail válido.');return}
   if(!pass||pass.length<6){syncMsg('A senha precisa ter pelo menos 6 caracteres.');return}
-  const lock=v=>document.querySelectorAll('[data-act="sync-login"],[data-act="sync-signup"]').forEach(b=>b.disabled=v);
+  const lock=v=>document.querySelectorAll('[data-act="sync-login"]').forEach(b=>b.disabled=v);
   lock(true);syncMsg('Conectando…',true);
   try{
-    let r;
-    if(kind==='signup')r=await authReq('signup',email,pass);
-    else{
-      r=await authReq('token?grant_type=password',email,pass);
-      if(!r.ok&&/invalid_credentials|Invalid login credentials/i.test(r.raw)){
-        syncMsg('Conta não encontrada — criando sua conta…',true);
-        r=await authReq('signup',email,pass);
-        if(!r.ok&&/already registered|user_already_exists|email_exists/i.test(r.raw)){
-          syncMsg('Este e-mail já tem conta, mas a senha não confere. Verifique a senha.');return;
-        }
-      }
+    sync.space=await spaceId(pass);
+    const rows=await sbRpc('sync_pull',{p_space:sync.space});
+    const rem=rows&&rows[0];
+    if(rem&&rem.doc){
+      db=normalize(rem.doc);db._rev=rem.updated_ms||0;save(false);
+      sync.lastAt=Date.now();sync.lastMsg='☁️ recebido';saveSync();
+      render();toast('Conectado! Dados da nuvem carregados neste aparelho.');
+    }else{
+      saveSync();await pushNow();
+      render();toast('Conectado! Sincronização ativada com esta senha.');
     }
-    if(!r.ok){syncMsg('⚠️ '+authErrMsg(r));return}
-    if(!adoptSession(r.j)){
-      syncMsg('Quase lá! Enviamos um link de confirmação para '+email+' — abra-o e depois clique em Entrar. (Se você já tinha conta, confira a senha. Para dispensar a confirmação, desative "Confirm email" no Supabase.)',true);
-      return;
-    }
-    toast('Conectado!');await syncNow(true);render();
-  }catch(e){syncMsg('⚠️ Não consegui falar com o servidor ('+e.message+'). Verifique sua conexão e tente de novo.')}
+  }catch(e){delete sync.space;
+    const m=/failed to fetch|networkerror|load failed|connectionfailed/i.test(e.message)
+      ?'Sem conexão com o servidor — verifique sua internet e tente de novo.':e.message;
+    syncMsg('⚠️ '+m)}
   finally{lock(false)}
 }
 function syncCard(){
   if(!logged())return `
   <div class="card" style="margin-top:12px"><h2>☁️ Sincronizar entre dispositivos</h2>
-    <div class="sub">entre (ou crie a conta) com o MESMO e-mail e senha em todos os aparelhos</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;max-width:560px;margin:12px 0 10px">
-      <div><div class="eyebrow" style="margin-bottom:4px">E-mail</div><input id="sb-email" type="email" autocomplete="email"></div>
-      <div><div class="eyebrow" style="margin-bottom:4px">Senha</div><input id="sb-pass" type="password" autocomplete="current-password"></div>
+    <div class="sub">defina uma <b>senha administrativa</b> — digite a MESMA senha em cada aparelho para os dados se encontrarem na nuvem</div>
+    <div style="max-width:340px;margin:12px 0 10px">
+      <div class="eyebrow" style="margin-bottom:4px">Senha administrativa</div>
+      <input id="sb-pass" type="password" autocomplete="off" placeholder="mínimo 6 caracteres">
     </div>
     <div id="sb-msg" style="display:none;font-size:12.5px;line-height:1.6;margin:0 0 10px;max-width:560px"></div>
     <div class="toolbar" style="margin:0">
-      <button class="btn" data-act="sync-login">Entrar</button>
-      <button class="btn-ghost" data-act="sync-signup">Criar conta</button>
+      <button class="btn" data-act="sync-login">Entrar / Ativar</button>
       <span class="spacer"></span>
       <button class="btn-ghost" data-act="sync-sql-copy" style="padding:4px 10px;font-size:11px">copiar SQL</button>
     </div>
+    <p style="font-size:11.5px;color:var(--faint);margin:12px 0 0;line-height:1.6">A senha é a chave dos seus dados — <b>anote em lugar seguro</b>. Sem ela não dá para recuperar o que está na nuvem (mas você sempre pode exportar um backup em Ajustes). O SQL só precisa ser executado <b>uma vez</b> no seu projeto Supabase.</p>
   </div>`;
   return `
   <div class="card" style="margin-top:12px"><h2>☁️ Sincronizar entre dispositivos</h2>
-    <div class="sub">conectado como <b>${esc(sync.session.user.email||'')}</b> · <span id="sync-status">${esc(syncStatusText())}</span></div>
-    <p style="font-size:12.5px;color:var(--muted);margin:10px 0">As alterações são enviadas sozinhas ao editar e buscadas ao abrir o app. Em conflito, vale a versão mais recente.</p>
+    <div class="sub">✅ conectado (modo administrador) · <span id="sync-status">${esc(syncStatusText())}</span></div>
+    <p style="font-size:12.5px;color:var(--muted);margin:10px 0">As alterações são enviadas sozinhas ao editar e buscadas ao abrir o app. Em conflito, vale a versão mais recente. Digite a mesma senha em outro aparelho para ver estes dados lá.</p>
     <div class="toolbar" style="margin:0">
       <button class="btn" data-act="sync-now">Sincronizar agora</button>
-      <button class="btn-ghost" data-act="sync-logout">Sair</button>
-      <span class="spacer"></span>
-      <button class="btn-ghost" data-act="sync-sql-copy" style="padding:4px 10px;font-size:11px">copiar SQL</button>
+      <button class="btn-ghost" data-act="sync-logout">Sair deste aparelho</button>
     </div>
   </div>`;
 }
@@ -1041,7 +1026,7 @@ function renderNav(){
     `<button class="nav-btn" data-act="theme" style="margin-top:8px">`+
       (document.documentElement.dataset.theme==='light'?'<span class="ic">🌙</span>Modo escuro':'<span class="ic">☀️</span>Modo claro')+
     `</button>`+
-    `<div class="side-foot">${logged()?'☁️ '+esc(sync.session.user.email||''):'Dados salvos neste navegador.'}<br>${logged()?esc(syncStatusText()):'Faça backup em Ajustes.'}</div>`;
+    `<div class="side-foot">${logged()?'☁️ Sincronizado na nuvem':'Dados salvos neste navegador.'}<br>${logged()?esc(syncStatusText()):'Faça backup em Ajustes.'}</div>`;
 }
 function render(){
   ensureFixas();
@@ -1061,7 +1046,7 @@ function render(){
   }));
 }
 document.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&(e.target.id==='sb-pass'||e.target.id==='sb-email'))authAction('login');
+  if(e.key==='Enter'&&e.target.id==='sb-pass')adminLogin();
 });
 document.addEventListener('click',e=>{
   const nb=e.target.closest('[data-view]'); if(nb){view=nb.dataset.view;render();window.scrollTo({top:0});return}
@@ -1108,10 +1093,9 @@ document.addEventListener('click',e=>{
     case 'lst-add':{const inp=document.querySelector(`[data-lst-input="${b.dataset.key}"]`);const v=inp.value.trim();
       if(v&&!db.listas[b.dataset.key].includes(v)){db.listas[b.dataset.key].push(v);save();render();toast('Adicionado')}break}
     case 'lst-del':{db.listas[b.dataset.key].splice(+b.dataset.i,1);save();render();break}
-    case 'sync-login':authAction('login');break;
-    case 'sync-signup':authAction('signup');break;
+    case 'sync-login':adminLogin();break;
     case 'sync-now':syncNow(false);break;
-    case 'sync-logout':sync.session=null;saveSync();render();toast('Desconectado');break;
+    case 'sync-logout':delete sync.space;saveSync();render();toast('Desconectado deste aparelho');break;
     case 'sync-sql-copy':{
       if(navigator.clipboard&&navigator.clipboard.writeText)
         navigator.clipboard.writeText(SYNC_SQL).then(()=>toast('SQL copiado!'),()=>prompt('Copie o SQL:',SYNC_SQL));

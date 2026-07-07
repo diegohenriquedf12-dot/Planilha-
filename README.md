@@ -17,14 +17,13 @@ O mesmo controle financeiro em formato de **site interativo**: [`index.html`](in
 
 ### ☁️ Sincronização entre dispositivos (Supabase)
 
-O site sincroniza seus dados entre celular, computador etc. usando o projeto [Supabase](https://supabase.com) já embutido no próprio site — o login é **somente e-mail e senha**, sem nenhuma configuração:
+O site sincroniza seus dados entre celular, computador etc. usando o projeto [Supabase](https://supabase.com) já embutido no próprio site — o acesso é por uma **senha administrativa única**, sem e-mail e sem confirmação:
 
-1. No site, abra **Ajustes ▸ ☁️ Sincronizar entre dispositivos** e crie sua conta (e-mail + senha).
-2. Nos outros aparelhos, **entre com o mesmo e-mail/senha** — pronto.
+1. **Configuração única** (feita uma vez pelo dono): abrir o **SQL Editor** do projeto Supabase e executar o conteúdo de [`supabase.sql`](supabase.sql) (também disponível no botão "copiar SQL" dentro do site).
+2. No site, abra **Ajustes ▸ ☁️ Sincronizar entre dispositivos**, digite uma **senha administrativa** e clique **Entrar / Ativar**.
+3. Nos outros aparelhos, digite a **mesma senha** — os dados aparecem automaticamente.
 
-Configuração única do projeto (feita uma vez pelo dono): executar o conteúdo de [`supabase.sql`](supabase.sql) no **SQL Editor** e, opcionalmente, desativar "Confirm email" em **Authentication ▸ Sign In / Up ▸ Email**.
-
-As alterações são enviadas automaticamente ao editar e buscadas ao abrir o app; em conflito, vale a versão mais recente. A tabela usa RLS — cada usuário só acessa os próprios dados.
+As alterações são enviadas automaticamente ao editar e buscadas ao abrir o app; em conflito, vale a versão mais recente. Os dados ficam guardados sob um identificador derivado da senha (SHA-256) e a tabela só é acessível por funções `security definer` — a senha é a chave, então **guarde-a bem**; sem ela não há como recuperar o que está na nuvem (mas o backup em JSON continua disponível em Ajustes).
 
 ## 🗂️ Abas
 
