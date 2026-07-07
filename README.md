@@ -17,13 +17,12 @@ O mesmo controle financeiro em formato de **site interativo**: [`index.html`](in
 
 ### ☁️ Sincronização entre dispositivos (Supabase)
 
-O site pode sincronizar seus dados entre celular, computador etc. usando um projeto **gratuito** do [Supabase](https://supabase.com) — os dados ficam na sua própria conta:
+O site sincroniza seus dados entre celular, computador etc. usando o projeto [Supabase](https://supabase.com) já embutido no próprio site — o login é **somente e-mail e senha**, sem nenhuma configuração:
 
-1. Crie um projeto em supabase.com.
-2. No **SQL Editor** do projeto, execute o conteúdo de [`supabase.sql`](supabase.sql).
-3. Em **Authentication ▸ Sign In / Up ▸ Email**, desative "Confirm email" (opcional, facilita).
-4. No site, abra **Ajustes ▸ ☁️ Sincronizar entre dispositivos**, cole a **Project URL** e a chave **anon public** (Settings ▸ API) e crie sua conta.
-5. Nos outros aparelhos, repita o passo 4 e **entre com o mesmo e-mail/senha**.
+1. No site, abra **Ajustes ▸ ☁️ Sincronizar entre dispositivos** e crie sua conta (e-mail + senha).
+2. Nos outros aparelhos, **entre com o mesmo e-mail/senha** — pronto.
+
+Configuração única do projeto (feita uma vez pelo dono): executar o conteúdo de [`supabase.sql`](supabase.sql) no **SQL Editor** e, opcionalmente, desativar "Confirm email" em **Authentication ▸ Sign In / Up ▸ Email**.
 
 As alterações são enviadas automaticamente ao editar e buscadas ao abrir o app; em conflito, vale a versão mais recente. A tabela usa RLS — cada usuário só acessa os próprios dados.
 
