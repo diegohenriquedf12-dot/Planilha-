@@ -2,10 +2,19 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="Painel financeiro pessoal — receitas, despesas, contas, cartões, metas, planejamento, relatórios e alertas. Dados salvos no seu navegador.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070a08">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef4ef">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Finanças">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <title>Finanças — Painel Pessoal</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%233ddc84'/><text x='50' y='68' font-size='48' font-weight='bold' text-anchor='middle' fill='%23052012' font-family='monospace'>R$</text></svg>">
+</head>
 <style>
 :root{
   --bg:#070a08; --surface:#121812; --surface-2:#18211a; --surface-3:#1e2920;
@@ -231,16 +240,42 @@ tr.venc-warn td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .chiplist .chip button:hover{color:var(--crit)}
 .addrow{display:flex;gap:8px;max-width:340px}
 
+/* ---- app no celular: barra inferior + folha "Mais" ---- */
+.tabbar{display:none}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:12px;color:var(--muted);font-size:10.5px;font-weight:700;position:relative;transition:color .15s,transform .12s}
+.tab .ic{font-size:21px;line-height:1;transition:transform .18s}
+.tab.on{color:var(--accent)}
+.tab.on .ic{transform:translateY(-1px) scale(1.08)}
+.tab:active{transform:scale(.9)}
+.tab .badge{position:absolute;top:1px;left:calc(50% + 4px);margin:0}
+.sheet-scrim{position:fixed;inset:0;background:var(--overlay);opacity:0;pointer-events:none;transition:opacity .25s;z-index:80;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.sheet-scrim.open{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:81;background:var(--surface-2);border-radius:22px 22px 0 0;border-top:1px solid var(--glass-brd);padding:6px 14px calc(20px + env(safe-area-inset-bottom));transform:translateY(110%);transition:transform .3s cubic-bezier(.2,.9,.3,1);box-shadow:0 -24px 50px -20px rgba(0,0,0,.55);max-height:84vh;overflow:auto}
+.sheet.open{transform:none}
+.sheet .grip{width:40px;height:4px;border-radius:99px;background:var(--faint);opacity:.5;margin:8px auto 14px}
+.sheet h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:4px 4px 10px}
+.sheet-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.sheet-item{display:flex;align-items:center;gap:11px;padding:14px 13px;border-radius:14px;background:var(--surface-3);border:1px solid var(--glass-brd);color:var(--ink);font-weight:600;font-size:14px;text-align:left;width:100%;transition:transform .12s}
+.sheet-item .ic{font-size:18px;width:22px;text-align:center}
+.sheet-item.on{background:linear-gradient(90deg,var(--accent-glow),transparent);color:var(--accent);border-color:var(--accent-glow)}
+.sheet-item .badge{margin-left:auto}
+.sheet-item:active{transform:scale(.96)}
+
 @media (max-width:900px){
-  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
-  aside{position:sticky;top:0;z-index:40;height:auto;align-self:start;flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;padding:8px 10px;gap:4px;border-right:0;border-bottom:1px solid var(--glass-brd)}
-  .logo{padding:0 12px 0 4px;flex-shrink:0}.logo small{display:none}.logo .dot{width:30px;height:30px}
-  .nav-btn{white-space:nowrap;padding:8px 12px;flex-shrink:0}
-  .nav-btn.on::before{display:none}
-  .side-foot{display:none}
-  main{padding:18px 14px 50px}
+  .app{display:block}
+  aside{display:none}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;justify-content:space-around;gap:2px;
+    background:var(--glass);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);
+    border-top:1px solid var(--glass-brd);padding:7px 6px calc(7px + env(safe-area-inset-bottom));
+    box-shadow:0 -10px 30px -18px rgba(0,0,0,.6)}
+  main{padding:0 14px calc(84px + env(safe-area-inset-bottom))}
+  .topbar{position:sticky;top:0;z-index:40;margin:0 -14px 16px;padding:calc(10px + env(safe-area-inset-top)) 14px 12px;
+    background:var(--glass);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+    border-bottom:1px solid var(--glass-brd);gap:10px}
+  h1{font-size:19px}
   .charts2{grid-template-columns:1fr}
-  .month-nav{margin-left:0;width:100%;justify-content:space-between}
+  .month-nav{margin-left:auto;padding:3px}
+  .month-nav .cur{min-width:96px;font-size:12.5px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -263,6 +298,9 @@ tr.venc-warn td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
     <div id="view"></div>
   </main>
 </div>
+<nav id="tabbar" class="tabbar" aria-label="Navegação"></nav>
+<div class="sheet-scrim" id="more-scrim"></div>
+<div class="sheet" id="more-sheet" role="dialog" aria-modal="true" aria-label="Mais opções"></div>
 <div class="overlay" id="overlay"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div id="tip"></div>
 <div id="toast"></div>
@@ -538,6 +576,9 @@ function catSlices(y,m){
 const NAVS=[['dash','◧','Dashboard'],['rec','↓','Receitas'],['des','↑','Despesas'],['con','⌂','Contas'],
   ['car','▭','Cartões'],['met','◎','Metas'],['pla','▤','Planejamento'],['rel','∿','Relatórios'],
   ['ale','!','Alertas'],['cfg','⚙','Ajustes']];
+const EMO={dash:'🏠',rec:'💰',des:'💸',con:'🏦',car:'💳',met:'🎯',pla:'📅',rel:'📊',ale:'🔔',cfg:'⚙️'};
+const TABS=['dash','rec','des','rel'];           // abas fixas da barra inferior (celular)
+const MORE_IDS=['con','car','met','pla','ale','cfg']; // vão para a folha "Mais"
 const TITLES={dash:['Dashboard','Visão geral da sua vida financeira'],rec:['Receitas','Tudo o que entra'],
   des:['Despesas','Tudo o que sai'],con:['Contas','Saldo por banco, atualizado automaticamente'],
   car:['Cartões','Limites, faturas e parcelamentos'],met:['Metas','Objetivos e progresso'],
@@ -1073,13 +1114,27 @@ function ensureFixas(){
 }
 function renderNav(){
   const n=alertas().total;
+  const theme=document.documentElement.dataset.theme;
   $('#sidenav').innerHTML=`<div class="logo"><span class="dot">R$</span><div><b>Finanças</b><small>painel pessoal</small></div></div>`+
     NAVS.map(([id,ic,lb])=>`<button class="nav-btn ${view===id?'on':''}" data-view="${id}"><span class="ic">${ic}</span>${lb}${id==='ale'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')+
     `<button class="nav-btn" data-act="theme" style="margin-top:8px">`+
-      (document.documentElement.dataset.theme==='light'?'<span class="ic">🌙</span>Modo escuro':'<span class="ic">☀️</span>Modo claro')+
+      (theme==='light'?'<span class="ic">🌙</span>Modo escuro':'<span class="ic">☀️</span>Modo claro')+
     `</button>`+
     `<div class="side-foot">${logged()?'☁️ Sincronizado na nuvem':'Dados salvos neste navegador.'}<br>${logged()?esc(syncStatusText()):'Faça backup em Ajustes.'}</div>`;
+  // barra inferior (celular)
+  const moreActive=!TABS.includes(view);
+  $('#tabbar').innerHTML=
+    TABS.map(id=>`<button class="tab ${view===id?'on':''}" data-view="${id}"><span class="ic">${EMO[id]}</span>${TITLES[id][0]}</button>`).join('')+
+    `<button class="tab ${moreActive?'on':''}" data-act="more"><span class="ic">☰</span>Mais${n?`<span class="badge">${n}</span>`:''}</button>`;
+  $('#more-sheet').innerHTML=`<div class="grip"></div><h3>Mais opções</h3>
+    <div class="sheet-grid">
+      ${MORE_IDS.map(id=>`<button class="sheet-item ${view===id?'on':''}" data-view="${id}"><span class="ic">${EMO[id]}</span>${TITLES[id][0]}${id==='ale'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
+      <button class="sheet-item" data-act="theme"><span class="ic">${theme==='light'?'🌙':'☀️'}</span>${theme==='light'?'Modo escuro':'Modo claro'}</button>
+    </div>
+    <div style="margin-top:14px;font-size:11.5px;color:var(--faint);text-align:center">${logged()?'☁️ '+esc(syncStatusText()):'Dados salvos neste aparelho · faça backup em Ajustes'}</div>`;
 }
+function openMore(){$('#more-sheet').classList.add('open');$('#more-scrim').classList.add('open');document.body.style.overflow='hidden'}
+function closeMore(){$('#more-sheet').classList.remove('open');$('#more-scrim').classList.remove('open');document.body.style.overflow=''}
 function render(){
   ensureFixas();
   renderNav();
@@ -1101,9 +1156,11 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&e.target.id==='sb-pass')adminLogin();
 });
 document.addEventListener('click',e=>{
-  const nb=e.target.closest('[data-view]'); if(nb){view=nb.dataset.view;render();window.scrollTo({top:0});return}
+  if(e.target.id==='more-scrim'){closeMore();return}
+  const nb=e.target.closest('[data-view]'); if(nb){view=nb.dataset.view;closeMore();render();window.scrollTo({top:0});return}
   const b=e.target.closest('[data-act]'); if(!b)return;
   const act=b.dataset.act, id=b.dataset.id;
+  if(act==='more'){openMore();return}
   const find=(arr)=>arr.find(x=>x.id===id);
   const del=(arr,msg)=>{const i=arr.findIndex(x=>x.id===id);if(i>=0&&confirm('Excluir este item?')){arr.splice(i,1);save();render();toast(msg)}};
   const delFixavel=(arr,msg)=>{
